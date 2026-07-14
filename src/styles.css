@@ -1,0 +1,232 @@
+:root {
+  --bg: #0b1120;
+  --panel: #141c30;
+  --panel-2: #1c2640;
+  --line: #2a3554;
+  --text: #e8edf7;
+  --muted: #93a0bd;
+  --accent: #34d399;
+  --up: #f87171;   /* 한국 증시 관례: 상승 = 빨강 */
+  --down: #60a5fa; /* 하락 = 파랑 */
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Pretendard', 'Apple SD Gothic Neo', 'Noto Sans KR', system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+.app { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+/* ── 헤더 ─────────────────────────── */
+.topbar { text-align: center; margin-bottom: 16px; }
+.logo { font-size: 28px; letter-spacing: 1px; }
+.logo-en { color: var(--accent); font-style: italic; }
+.tagline { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+
+.tabs { display: flex; gap: 8px; justify-content: center; }
+.tabs button {
+  background: var(--panel); color: var(--muted); border: 1px solid var(--line);
+  padding: 8px 18px; border-radius: 999px; cursor: pointer; font-size: 14px;
+}
+.tabs button.on { background: var(--accent); color: #062b1d; font-weight: 700; border-color: var(--accent); }
+
+/* ── 레이아웃 ─────────────────────── */
+.squad-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(300px, 0.8fr); gap: 16px; }
+.single-col { max-width: 900px; margin: 0 auto; }
+@media (max-width: 900px) { .squad-layout { grid-template-columns: 1fr; } }
+
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+  padding: 14px; margin-bottom: 14px;
+}
+.panel h3 { font-size: 15px; margin-bottom: 10px; }
+
+/* ── 경기장 ───────────────────────── */
+.pitch {
+  position: relative; width: 100%; aspect-ratio: 3 / 4;
+  background:
+    repeating-linear-gradient(0deg, rgba(255,255,255,0.03) 0 12.5%, transparent 12.5% 25%),
+    linear-gradient(180deg, #14532d 0%, #166534 55%, #14532d 100%);
+  border: 2px solid rgba(255,255,255,0.35); border-radius: 12px; overflow: hidden;
+}
+.pitch-line { position: absolute; border-color: rgba(255,255,255,0.3); }
+.pitch-line.half { left: 0; right: 0; top: 50%; border-top: 2px solid rgba(255,255,255,0.3); }
+.pitch-line.center-circle {
+  left: 50%; top: 50%; width: 22%; aspect-ratio: 1;
+  border: 2px solid rgba(255,255,255,0.3); border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+.pitch-line.box-top {
+  left: 30%; right: 30%; top: 0; height: 9%;
+  border: 2px solid rgba(255,255,255,0.3); border-top: none;
+}
+.pitch-line.box-bottom {
+  left: 30%; right: 30%; bottom: 0; height: 9%;
+  border: 2px solid rgba(255,255,255,0.3); border-bottom: none;
+}
+
+.player {
+  position: absolute; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: none; cursor: pointer; width: 92px;
+}
+.player-pos {
+  color: #fff; font-size: 10px; font-weight: 800; padding: 2px 8px;
+  border-radius: 999px; letter-spacing: 0.5px;
+}
+.player-name {
+  background: rgba(10, 15, 28, 0.88); border: 1.5px solid var(--pos-color, #fff);
+  color: #fff; font-size: 12px; font-weight: 700; padding: 4px 8px;
+  border-radius: 8px; white-space: nowrap; max-width: 100px;
+  overflow: hidden; text-overflow: ellipsis;
+}
+.player.empty .player-name {
+  border-style: dashed; color: rgba(255,255,255,0.65); font-weight: 400;
+}
+.player:hover .player-name { border-color: var(--accent); }
+.player-weight { color: rgba(255,255,255,0.85); font-size: 11px; font-weight: 700; text-shadow: 0 1px 2px #000; }
+.player.gk { cursor: default; }
+
+.squad-status { text-align: center; color: var(--muted); font-size: 13px; margin-top: 8px; }
+.squad-status strong { color: var(--accent); }
+
+/* ── 날씨 ─────────────────────────── */
+.weather-grid { display: grid; gap: 8px; }
+.weather-item {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--panel-2); border-radius: 10px; padding: 8px 10px;
+}
+.weather-icon { font-size: 22px; }
+.weather-label { color: var(--muted); font-size: 11px; }
+.weather-value { font-size: 14px; font-weight: 700; }
+.weather-value em { font-style: normal; color: var(--accent); font-size: 12px; margin-left: 4px; }
+
+/* ── 포메이션/전술 ─────────────────── */
+.formation-row { display: flex; gap: 6px; flex-wrap: wrap; }
+.formation-btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  padding: 6px 14px; border-radius: 8px; cursor: pointer; font-weight: 700;
+}
+.formation-btn.on { background: var(--accent); color: #062b1d; border-color: var(--accent); }
+.formation-desc { color: var(--muted); font-size: 12px; margin-top: 8px; }
+
+.cash-label { display: block; margin-top: 12px; font-size: 13px; }
+.cash-label input { width: 100%; margin-top: 6px; accent-color: var(--accent); }
+
+.tactic-card {
+  display: block; width: 100%; text-align: left; background: var(--panel-2);
+  border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px;
+  margin-bottom: 8px; cursor: pointer; color: var(--text);
+}
+.tactic-card.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.tactic-card:hover { border-color: var(--accent); }
+.tactic-title { font-weight: 800; font-size: 13px; }
+.tactic-formation {
+  background: var(--accent); color: #062b1d; font-size: 11px;
+  padding: 1px 8px; border-radius: 999px; margin-left: 6px;
+}
+.tactic-sub { color: var(--accent); font-size: 12px; margin: 2px 0; }
+.tactic-phil { color: var(--muted); font-size: 12px; }
+
+/* ── 포지션 가이드 ─────────────────── */
+.pos-guide { list-style: none; display: grid; gap: 8px; }
+.pos-guide li { display: flex; gap: 8px; align-items: flex-start; }
+.pos-guide strong { font-size: 12px; }
+.pos-guide p { color: var(--muted); font-size: 11px; }
+.pos-badge {
+  color: #fff; font-size: 10px; font-weight: 800; padding: 2px 8px;
+  border-radius: 999px; white-space: nowrap; flex-shrink: 0; margin-top: 2px;
+}
+
+/* ── 스카우트 모달 ─────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.65);
+  display: flex; align-items: center; justify-content: center; z-index: 50; padding: 16px;
+}
+.modal {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+  width: min(680px, 100%); max-height: 85vh; overflow-y: auto; padding: 16px;
+}
+.modal-head { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+.pos-criteria { color: var(--muted); font-size: 12px; margin-top: 6px; }
+.close-btn { background: none; border: none; color: var(--muted); font-size: 18px; cursor: pointer; }
+
+.scout-list { display: grid; gap: 8px; }
+.scout-card {
+  text-align: left; background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px; cursor: pointer; color: var(--text);
+}
+.scout-card:hover:not(:disabled) { border-color: var(--accent); }
+.scout-card.current { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.scout-card.taken { opacity: 0.45; cursor: not-allowed; }
+.scout-top { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.scout-code { color: var(--muted); font-size: 11px; }
+.taken-tag { background: var(--line); font-size: 10px; padding: 1px 8px; border-radius: 999px; }
+.scout-stats { display: flex; gap: 10px; flex-wrap: wrap; color: var(--muted); font-size: 11px; margin: 4px 0; }
+.scout-comment { color: var(--accent); font-size: 12px; }
+
+.release-btn {
+  width: 100%; margin-top: 10px; background: none; border: 1px dashed var(--line);
+  color: var(--muted); padding: 8px; border-radius: 8px; cursor: pointer;
+}
+.release-btn:hover { color: var(--up); border-color: var(--up); }
+
+/* ── 리그 ─────────────────────────── */
+.league-head { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px; }
+.btn {
+  background: var(--panel-2); color: var(--text); border: 1px solid var(--line);
+  padding: 6px 12px; border-radius: 8px; cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); }
+.rule-note { color: var(--muted); font-size: 12px; margin: 8px 0 12px; }
+
+.league-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.league-table th, .league-table td { padding: 8px 6px; text-align: center; border-bottom: 1px solid var(--line); }
+.league-table th { color: var(--muted); font-weight: 600; font-size: 11px; }
+.league-table td:nth-child(2), .league-table th:nth-child(2) { text-align: left; }
+.league-table tr.me { background: rgba(52, 211, 153, 0.08); }
+.league-table .pts { font-weight: 800; color: var(--accent); }
+.up { color: var(--up); font-weight: 700; }
+.down { color: var(--down); font-weight: 700; }
+
+.match-strip, .day-strip { display: flex; gap: 8px; flex-wrap: wrap; }
+.match-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--panel-2); border-radius: 10px; padding: 8px 10px; min-width: 74px;
+  border-top: 3px solid var(--line);
+}
+.match-chip.W { border-top-color: var(--up); }
+.match-chip.L { border-top-color: var(--down); }
+.match-chip.D { border-top-color: var(--muted); }
+.match-week { color: var(--muted); font-size: 10px; }
+.match-score { font-weight: 800; font-size: 15px; }
+.match-result { font-size: 11px; }
+.match-ret { font-size: 11px; }
+
+.day-chip {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--panel-2); border-radius: 10px; padding: 8px 10px; min-width: 84px;
+}
+.day-num { color: var(--muted); font-size: 10px; }
+.day-goals { font-size: 13px; }
+.day-ret { font-size: 11px; }
+
+.league-empty { text-align: center; padding: 40px 16px; }
+.league-empty p { color: var(--muted); margin-top: 8px; }
+
+/* ── 데이터 탭 ─────────────────────── */
+.data-tab ul, .data-tab ol { padding-left: 20px; color: var(--muted); font-size: 13px; display: grid; gap: 4px; }
+.data-tab p { font-size: 13px; color: var(--muted); }
+.data-tab code { background: var(--panel-2); padding: 1px 6px; border-radius: 6px; color: var(--accent); font-size: 12px; }
+.data-tab strong { color: var(--text); }
+.arch {
+  background: var(--panel-2); border-radius: 10px; padding: 10px; margin: 10px 0;
+  font-family: monospace; font-size: 12px; text-align: center; color: var(--accent);
+}
+.warn { color: #fbbf24 !important; margin-top: 8px; }
+
+.footer { text-align: center; color: var(--muted); font-size: 11px; margin: 24px 0 8px; }
