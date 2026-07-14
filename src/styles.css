@@ -105,6 +105,21 @@ body {
 .weather-value { font-size: 14px; font-weight: 700; }
 .weather-value em { font-style: normal; color: var(--accent); font-size: 12px; margin-left: 4px; }
 
+/* ── 시세 전광판 ───────────────────── */
+.live-badge {
+  font-size: 10px; font-weight: 700; color: var(--muted);
+  background: var(--panel-2); border: 1px solid var(--line);
+  padding: 2px 8px; border-radius: 999px; margin-left: 6px; vertical-align: 2px;
+}
+.live-badge.live { color: var(--up); border-color: var(--up); }
+.quotes-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.quotes-table td { padding: 4px 2px; border-bottom: 1px solid var(--line); }
+.quotes-table td:nth-child(2), .quotes-table td:nth-child(3) {
+  text-align: right; font-variant-numeric: tabular-nums;
+}
+.q-price { font-weight: 700; }
+.quotes-hint { color: var(--muted); font-size: 11px; margin-top: 6px; }
+
 /* ── 포메이션/전술 ─────────────────── */
 .formation-row { display: flex; gap: 6px; flex-wrap: wrap; }
 .formation-btn {

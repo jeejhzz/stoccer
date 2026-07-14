@@ -3,7 +3,8 @@ import type { Lineup, Slot, Weather } from './types';
 import { FORMATIONS, findFormation, slotWeights } from './data/formations';
 import { TACTICS } from './data/tactics';
 import { POSITION_INFO } from './data/stocks';
-import { provider } from './lib/provider';
+import { detectProvider, type DataProvider } from './lib/provider';
+import { LiveQuotesPanel } from './components/LiveQuotesPanel';
 import { Pitch } from './components/Pitch';
 import { StockPicker } from './components/StockPicker';
 import { WeatherPanel } from './components/WeatherPanel';
@@ -23,6 +24,7 @@ export default function App() {
   const [pickingSlot, setPickingSlot] = useState<Slot | null>(null);
   const [weather, setWeather] = useState<Weather>({ oilUsd: 68.4, rate: 2.5, usdKrw: 1382 });
   const [appliedTactic, setAppliedTactic] = useState<string | null>(null);
+  const [dataProvider, setDataProvider] = useState<DataProvider | null>(null);
 
   const formation = findFormation(formationId);
   const weights = useMemo(() => slotWeights(formation, cashPercent), [formation, cashPercent]);
@@ -30,8 +32,19 @@ export default function App() {
   const squadReady = filledCount === 10;
 
   useEffect(() => {
-    provider.getWeather().then(setWeather);
+    let cancelled = false;
+    detectProvider().then((p) => {
+      if (cancelled) return;
+      setDataProvider(p);
+      p.getWeather().then((w) => { if (!cancelled) setWeather(w); });
+    });
+    return () => { cancelled = true; };
   }, []);
+
+  const lineupCodes = useMemo(
+    () => Object.values(lineup).filter((c): c is string => Boolean(c)),
+    [lineup],
+  );
 
   const changeFormation = (id: string) => {
     setFormationId(id);
@@ -87,6 +100,7 @@ export default function App() {
 
           <aside className="side-col">
             <WeatherPanel weather={weather} />
+            <LiveQuotesPanel provider={dataProvider} codes={lineupCodes} />
 
             <section className="panel">
               <h3>📋 포메이션</h3>

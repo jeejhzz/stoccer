@@ -117,4 +117,61 @@ export class MockProvider implements DataProvider {
   }
 }
 
+/** 백엔드(/api) 경유 프로바이더 — server/index.mjs 가 KIS 또는 mock 시세를 중계 */
+export class ApiProvider implements DataProvider {
+  constructor(readonly name: string) {}
+
+  async getQuotes(codes: string[]): Promise<Quote[]> {
+    const res = await fetch(`/api/quotes?codes=${codes.join(',')}`);
+    if (!res.ok) throw new Error(`quotes ${res.status}`);
+    const data = await res.json();
+    return data.quotes as Quote[];
+  }
+
+  async getDailyCandles(code: string, from: string, to: string): Promise<DailyCandle[]> {
+    const res = await fetch(
+      `/api/candles/${code}?from=${from.split('-').join('')}&to=${to.split('-').join('')}`,
+    );
+    if (!res.ok) throw new Error(`candles ${res.status}`);
+    return (await res.json()).candles as DailyCandle[];
+  }
+
+  async getWeather(): Promise<Weather> {
+    const res = await fetch('/api/weather');
+    if (!res.ok) throw new Error(`weather ${res.status}`);
+    const w = await res.json();
+    return { oilUsd: w.oilUsd, rate: w.rate, usdKrw: w.usdKrw };
+  }
+
+  subscribe(codes: string[], onQuote: (q: Quote) => void): () => void {
+    // 1단계: REST 폴링(준실시간). 2단계에서 KIS WebSocket 중계로 업그레이드 예정
+    const poll = async () => {
+      try {
+        (await this.getQuotes(codes)).forEach(onQuote);
+      } catch { /* 일시 오류는 다음 폴링에서 회복 */ }
+    };
+    poll();
+    const timer = setInterval(poll, 15_000);
+    return () => clearInterval(timer);
+  }
+}
+
+/**
+ * 백엔드가 살아 있으면 ApiProvider, 아니면 MockProvider.
+ * 아티팩트 미리보기처럼 백엔드가 없는 환경에서는 자동으로 샘플 모드로 동작한다.
+ */
+export async function detectProvider(): Promise<DataProvider> {
+  try {
+    const ctrl = new AbortController();
+    const timeout = setTimeout(() => ctrl.abort(), 2000);
+    const res = await fetch('/api/health', { signal: ctrl.signal });
+    clearTimeout(timeout);
+    if (res.ok) {
+      const h = await res.json();
+      if (h && h.ok === true) return new ApiProvider(h.source === 'kis' ? 'kis' : 'server-mock');
+    }
+  } catch { /* 백엔드 없음 */ }
+  return new MockProvider();
+}
+
 export const provider: DataProvider = new MockProvider();

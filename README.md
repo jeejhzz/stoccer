@@ -27,13 +27,22 @@
 
 ```bash
 npm install
-npm run dev     # 개발 서버
-npm run build   # 프로덕션 빌드
+npm start            # 빌드 + 백엔드 서버 (http://localhost:8787) — 한 번에 실행
+# 또는 개발 모드:
+npm run server       # 백엔드 (포트 8787)
+npm run dev          # 프런트 개발 서버 (포트 5173, /api는 백엔드로 프록시)
 ```
 
-## 데이터
+## 데이터 (실데이터 연동)
 
-현재는 **개발용 샘플 데이터**로 동작합니다 (투자 권유 아님). 실데이터 연동 방법은 [docs/data-integration.md](docs/data-integration.md) 참고 — 한국투자증권 KIS Developers(실시간 WebSocket), KRX/pykrx(역대 시세), DART(재무), ECOS(금리·환율) 조합을 권장합니다. 연동 지점은 `src/lib/provider.ts`의 `DataProvider` 인터페이스입니다.
+백엔드(`server/index.mjs`)가 한국투자증권 KIS 오픈API를 중계합니다. **키가 없으면 샘플 모드**로 동작하고, 키를 설정하면 시세 전광판이 실제 시세로 전환됩니다:
+
+```bash
+cp .env.example .env   # 파일을 만들고 KIS_APP_KEY / KIS_APP_SECRET 입력
+npm start
+```
+
+`KIS_ENV=vts`(모의투자, 기본)로 먼저 테스트한 뒤 `real`(실전)로 바꾸는 것을 권장합니다. 전체 연동 로드맵(WebSocket 실시간, KRX 역대 시세, DART 재무, ECOS 금리·환율)은 [docs/data-integration.md](docs/data-integration.md) 참고. 프런트 연동 지점은 `src/lib/provider.ts`의 `DataProvider` 인터페이스입니다.
 
 ## 프로젝트 구조
 
