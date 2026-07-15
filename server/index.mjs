@@ -134,6 +134,90 @@ async function kisDailyCandles(code, from, to) {
     .reverse();
 }
 
+// ── 야후 파이낸스 폴백 (KIS가 해외 IP를 차단하는 환경용, 키 불필요) ──
+const YAHOO_HEADERS = { 'user-agent': 'Mozilla/5.0 (compatible; Stoccer/0.1)' };
+const symbolCache = new Map(); // 종목코드 → '005930.KS' | '247540.KQ'
+
+async function yahooChart(symbol, params) {
+  const qs = new URLSearchParams(params).toString();
+  const res = await fetch(
+    `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${qs}`,
+    { headers: YAHOO_HEADERS },
+  );
+  if (!res.ok) throw new Error(`yahoo ${symbol} ${res.status}`);
+  const data = await res.json();
+  const result = data?.chart?.result?.[0];
+  if (!result) throw new Error(`yahoo ${symbol}: ${data?.chart?.error?.description || 'no data'}`);
+  return result;
+}
+
+/** 코스피(.KS) 먼저, 실패하면 코스닥(.KQ) 시도 */
+async function resolveYahooSymbol(code) {
+  if (symbolCache.has(code)) return symbolCache.get(code);
+  for (const suffix of ['KS', 'KQ']) {
+    try {
+      const sym = `${code}.${suffix}`;
+      await yahooChart(sym, { range: '1d', interval: '1d' });
+      symbolCache.set(code, sym);
+      return sym;
+    } catch { /* 다음 접미사 시도 */ }
+  }
+  throw new Error(`yahoo: 심볼을 찾을 수 없음 (${code})`);
+}
+
+async function yahooQuote(code) {
+  const sym = await resolveYahooSymbol(code);
+  const r = await yahooChart(sym, { range: '1d', interval: '1d' });
+  const m = r.meta;
+  const price = m.regularMarketPrice;
+  const prev = m.chartPreviousClose ?? m.previousClose ?? price;
+  const volumes = r.indicators?.quote?.[0]?.volume?.filter((v) => v != null) ?? [];
+  return {
+    code,
+    price,
+    changePercent: prev ? +(((price - prev) / prev) * 100).toFixed(2) : 0,
+    volume: m.regularMarketVolume ?? volumes[volumes.length - 1] ?? 0,
+    asOf: new Date((m.regularMarketTime || Date.now() / 1000) * 1000).toISOString(),
+  };
+}
+
+async function yahooDailyCandles(code, from, to) {
+  const sym = await resolveYahooSymbol(code);
+  const p1 = Math.floor(new Date(`${from.slice(0, 4)}-${from.slice(4, 6)}-${from.slice(6, 8)}`).getTime() / 1000);
+  const p2 = Math.floor(new Date(`${to.slice(0, 4)}-${to.slice(4, 6)}-${to.slice(6, 8)}`).getTime() / 1000) + 86400;
+  const r = await yahooChart(sym, { period1: p1, period2: p2, interval: '1d' });
+  const q = r.indicators?.quote?.[0] ?? {};
+  return (r.timestamp || [])
+    .map((ts, i) => ({
+      date: new Date(ts * 1000).toISOString().slice(0, 10),
+      open: q.open?.[i], high: q.high?.[i], low: q.low?.[i], close: q.close?.[i],
+      volume: q.volume?.[i] ?? 0,
+    }))
+    .filter((c) => c.close != null);
+}
+
+// ── 시세 소스 자동 선택: KIS → 야후 → 샘플 ──
+let sourceCache = { source: null, checkedAt: 0 };
+
+async function detectSource() {
+  const now = Date.now();
+  if (sourceCache.source && now - sourceCache.checkedAt < 10 * 60 * 1000) return sourceCache.source;
+  let source = 'mock';
+  if (kisConfigured) {
+    try { await kisQuote('005930'); source = 'kis'; } catch (e) {
+      console.warn('[stoccer] KIS 접속 불가 (해외 IP 차단 등):', String(e.message).slice(0, 120));
+    }
+  }
+  if (source === 'mock') {
+    try { await yahooQuote('005930'); source = 'yahoo'; } catch (e) {
+      console.warn('[stoccer] 야후 폴백도 불가:', String(e.message).slice(0, 120));
+    }
+  }
+  sourceCache = { source, checkedAt: now };
+  console.log(`[stoccer] 시세 소스 선택: ${source}`);
+  return source;
+}
+
 // ── 샘플(mock) 모드: 키가 없을 때 그럴듯한 시세를 생성 ──
 const mockBase = new Map();
 function mockPrice(code) {
@@ -170,32 +254,55 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   try {
     if (url.pathname === '/api/health') {
-      return sendJson(res, 200, { ok: true, source: kisConfigured ? 'kis' : 'mock', env: KIS_ENV });
+      return sendJson(res, 200, { ok: true, source: await detectSource(), env: KIS_ENV });
     }
 
     if (url.pathname === '/api/quotes') {
       const codes = (url.searchParams.get('codes') || '').split(',').filter(Boolean).slice(0, 20);
       if (!codes.length) return sendJson(res, 400, { error: 'codes 파라미터가 필요합니다' });
-      if (!kisConfigured) return sendJson(res, 200, { source: 'mock', quotes: codes.map(mockPrice) });
-      const quotes = [];
-      for (const code of codes) {
-        quotes.push(await kisQuote(code));
-        if (codes.length > 1) await sleep(THROTTLE_MS);
+      const source = await detectSource();
+      if (source === 'kis') {
+        const quotes = [];
+        for (const code of codes) {
+          quotes.push(await kisQuote(code));
+          if (codes.length > 1) await sleep(THROTTLE_MS);
+        }
+        return sendJson(res, 200, { source, quotes });
       }
-      return sendJson(res, 200, { source: 'kis', quotes });
+      if (source === 'yahoo') {
+        const quotes = await Promise.all(codes.map((c) => yahooQuote(c).catch(() => mockPrice(c))));
+        return sendJson(res, 200, { source, quotes });
+      }
+      return sendJson(res, 200, { source: 'mock', quotes: codes.map(mockPrice) });
     }
 
     if (url.pathname.startsWith('/api/candles/')) {
       const code = url.pathname.split('/').pop();
       const to = url.searchParams.get('to') || new Date().toISOString().slice(0, 10).replaceAll('-', '');
       const from = url.searchParams.get('from') || String(Number(to.slice(0, 4)) - 1) + to.slice(4);
-      if (!kisConfigured) return sendJson(res, 200, { source: 'mock', candles: [] });
-      return sendJson(res, 200, { source: 'kis', candles: await kisDailyCandles(code, from, to) });
+      const source = await detectSource();
+      if (source === 'kis') return sendJson(res, 200, { source, candles: await kisDailyCandles(code, from, to) });
+      if (source === 'yahoo') return sendJson(res, 200, { source, candles: await yahooDailyCandles(code, from, to) });
+      return sendJson(res, 200, { source: 'mock', candles: [] });
     }
 
     if (url.pathname === '/api/weather') {
-      // TODO: 한국은행 ECOS(금리·환율) + 오피넷(유가) 연동. 현재는 대표값 반환
-      return sendJson(res, 200, { oilUsd: 68.4, rate: 2.5, usdKrw: 1382, source: 'static' });
+      // 환율(KRW=X)·유가(WTI, CL=F)는 야후에서 실시간 조회, 금리는 대표값
+      // TODO: 한국은행 ECOS(기준금리) 연동
+      try {
+        const [fx, oil] = await Promise.all([
+          yahooChart('KRW=X', { range: '1d', interval: '1d' }),
+          yahooChart('CL=F', { range: '1d', interval: '1d' }),
+        ]);
+        return sendJson(res, 200, {
+          oilUsd: +oil.meta.regularMarketPrice.toFixed(1),
+          rate: 2.5,
+          usdKrw: Math.round(fx.meta.regularMarketPrice),
+          source: 'yahoo',
+        });
+      } catch {
+        return sendJson(res, 200, { oilUsd: 68.4, rate: 2.5, usdKrw: 1382, source: 'static' });
+      }
     }
 
     // 정적 파일 서빙 (빌드된 dist가 있을 때)

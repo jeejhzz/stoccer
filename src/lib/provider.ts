@@ -168,7 +168,10 @@ export async function detectProvider(): Promise<DataProvider> {
     clearTimeout(timeout);
     if (res.ok) {
       const h = await res.json();
-      if (h && h.ok === true) return new ApiProvider(h.source === 'kis' ? 'kis' : 'server-mock');
+      if (h && h.ok === true) {
+        const source = h.source === 'kis' || h.source === 'yahoo' ? h.source : 'server-mock';
+        return new ApiProvider(source);
+      }
     }
   } catch { /* 백엔드 없음 */ }
   return new MockProvider();

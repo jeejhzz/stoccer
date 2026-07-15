@@ -20,8 +20,14 @@ export function LiveQuotesPanel({ provider, codes }: Props) {
     return unsubscribe;
   }, [provider, codes.join(',')]);
 
-  const live = provider?.name === 'kis';
-  const badge = !provider ? '연결 중…' : live ? '🔴 실시간 KIS' : '🟡 샘플 데이터';
+  const live = provider?.name === 'kis' || provider?.name === 'yahoo';
+  const badge = !provider
+    ? '연결 중…'
+    : provider.name === 'kis'
+      ? '🔴 실시간 KIS'
+      : provider.name === 'yahoo'
+        ? '🟢 실제 시세 (야후·지연)'
+        : '🟡 샘플 데이터';
 
   return (
     <section className="panel">
