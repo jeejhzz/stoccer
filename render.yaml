@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: stoccer
+    runtime: node
+    plan: free
+    region: singapore
+    buildCommand: npm install && npm run build
+    startCommand: node server/index.mjs
+    envVars:
+      - key: KIS_ENV
+        value: vts
