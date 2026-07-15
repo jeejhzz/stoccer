@@ -1,4 +1,6 @@
-import type { Weather } from '../types';
+import type { PricePoint, Weather } from '../types';
+import { gaussian, mulberry32 } from './league';
+import { STOCKS } from '../data/stocks';
 
 /**
  * 시세 데이터 프로바이더 추상화 레이어.
@@ -46,6 +48,8 @@ export interface DataProvider {
   getDailyCandles(code: string, from: string, to: string): Promise<DailyCandle[]>;
   /** 거시 지표 (경기장 날씨) */
   getWeather(): Promise<Weather>;
+  /** 일별 종가 시계열 일괄 조회 (리그 계산용). 지수는 '^KS11' 형태 */
+  getHistory(codes: string[], days: number): Promise<Record<string, PricePoint[]>>;
   /** 실시간 체결가 구독 (WebSocket). 구독 해제 함수를 반환 */
   subscribe(codes: string[], onQuote: (q: Quote) => void): () => void;
 }
@@ -101,6 +105,27 @@ export class MockProvider implements DataProvider {
     return { oilUsd: 68.4, rate: 2.5, usdKrw: 1382 };
   }
 
+  async getHistory(codes: string[], days: number): Promise<Record<string, PricePoint[]>> {
+    // 최근 days일 중 평일만 거래일로 사용
+    const dates: string[] = [];
+    for (let i = days; i >= 1; i--) {
+      const d = new Date(Date.now() - i * 86_400_000);
+      if (d.getUTCDay() !== 0 && d.getUTCDay() !== 6) dates.push(d.toISOString().slice(0, 10));
+    }
+    const out: Record<string, PricePoint[]> = {};
+    for (const code of codes) {
+      const seed = [...code].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+      const rng = mulberry32(seed);
+      const vol = STOCKS.find((s) => s.code === code)?.metrics.volatility ?? 16;
+      let price = code.startsWith('^') ? 2600 : 10_000 + (seed % 90) * 3_000;
+      out[code] = dates.map((date) => {
+        price *= 1 + (gaussian(rng) * vol) / Math.sqrt(252) / 100 + 0.0003;
+        return { date, close: price };
+      });
+    }
+    return out;
+  }
+
   subscribe(codes: string[], onQuote: (q: Quote) => void): () => void {
     const timer = setInterval(() => {
       const code = codes[Math.floor(Math.random() * codes.length)];
@@ -143,6 +168,14 @@ export class ApiProvider implements DataProvider {
     return { oilUsd: w.oilUsd, rate: w.rate, usdKrw: w.usdKrw };
   }
 
+  async getHistory(codes: string[], days: number): Promise<Record<string, PricePoint[]>> {
+    const res = await fetch(
+      `/api/history?codes=${encodeURIComponent(codes.join(','))}&days=${days}`,
+    );
+    if (!res.ok) throw new Error(`history ${res.status}`);
+    return (await res.json()).series as Record<string, PricePoint[]>;
+  }
+
   subscribe(codes: string[], onQuote: (q: Quote) => void): () => void {
     // 1단계: REST 폴링(준실시간). 2단계에서 KIS WebSocket 중계로 업그레이드 예정
     const poll = async () => {
@@ -163,7 +196,7 @@ export class ApiProvider implements DataProvider {
 export async function detectProvider(): Promise<DataProvider> {
   try {
     const ctrl = new AbortController();
-    const timeout = setTimeout(() => ctrl.abort(), 2000);
+    const timeout = setTimeout(() => ctrl.abort(), 10_000);
     const res = await fetch('/api/health', { signal: ctrl.signal });
     clearTimeout(timeout);
     if (res.ok) {

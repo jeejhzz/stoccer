@@ -151,9 +151,10 @@ async function yahooChart(symbol, params) {
   return result;
 }
 
-/** 코스피(.KS) 먼저, 실패하면 코스닥(.KQ) 시도 */
+/** 코스피(.KS) 먼저, 실패하면 코스닥(.KQ) 시도. 지수(^KS11)·환율(KRW=X) 등은 그대로 통과 */
 async function resolveYahooSymbol(code) {
   if (symbolCache.has(code)) return symbolCache.get(code);
+  if (/[^0-9]/.test(code)) { symbolCache.set(code, code); return code; }
   for (const suffix of ['KS', 'KQ']) {
     try {
       const sym = `${code}.${suffix}`;
@@ -199,17 +200,25 @@ async function yahooDailyCandles(code, from, to) {
 // ── 시세 소스 자동 선택: KIS → 야후 → 샘플 ──
 let sourceCache = { source: null, checkedAt: 0 };
 
+const withTimeout = (promise, ms) =>
+  Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`timeout ${ms}ms`)), ms)),
+  ]);
+
 async function detectSource() {
   const now = Date.now();
-  if (sourceCache.source && now - sourceCache.checkedAt < 10 * 60 * 1000) return sourceCache.source;
+  // 성공 소스는 10분, 실패(mock)는 1분만 캐싱해 일시 장애에서 빨리 회복
+  const ttl = sourceCache.source === 'mock' ? 60 * 1000 : 10 * 60 * 1000;
+  if (sourceCache.source && now - sourceCache.checkedAt < ttl) return sourceCache.source;
   let source = 'mock';
   if (kisConfigured) {
-    try { await kisQuote('005930'); source = 'kis'; } catch (e) {
+    try { await withTimeout(kisQuote('005930'), 5000); source = 'kis'; } catch (e) {
       console.warn('[stoccer] KIS 접속 불가 (해외 IP 차단 등):', String(e.message).slice(0, 120));
     }
   }
   if (source === 'mock') {
-    try { await yahooQuote('005930'); source = 'yahoo'; } catch (e) {
+    try { await withTimeout(yahooQuote('005930'), 6000); source = 'yahoo'; } catch (e) {
       console.warn('[stoccer] 야후 폴백도 불가:', String(e.message).slice(0, 120));
     }
   }
@@ -235,6 +244,24 @@ function mockPrice(code) {
     asOf: new Date().toISOString(),
   };
 }
+
+/** 샘플 모드용 가상 종가 시계열 (평일만) */
+function mockSeries(code, days) {
+  const seed = [...code].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+  let price = code.startsWith('^') ? 2600 : 10_000 + (seed % 90) * 3_000;
+  let state = seed;
+  const rand = () => ((state = (state * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const out = [];
+  for (let i = days; i >= 1; i--) {
+    const d = new Date(Date.now() - i * 86_400_000);
+    if (d.getUTCDay() === 0 || d.getUTCDay() === 6) continue;
+    price *= 1 + (rand() - 0.495) * 0.035;
+    out.push({ date: d.toISOString().slice(0, 10), close: price });
+  }
+  return out;
+}
+
+const historyCache = new Map(); // `${code}:${days}:${today}` → PricePoint[]
 
 // ── HTTP 서버 ──
 const MIME = {
@@ -286,6 +313,52 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { source: 'mock', candles: [] });
     }
 
+    if (url.pathname === '/api/history') {
+      const codes = (url.searchParams.get('codes') || '').split(',').filter(Boolean).slice(0, 60);
+      const days = Math.min(Number(url.searchParams.get('days')) || 92, 400);
+      if (!codes.length) return sendJson(res, 400, { error: 'codes 파라미터가 필요합니다' });
+      const source = await detectSource();
+      const today = new Date();
+      const fmt = (d) => d.toISOString().slice(0, 10).replaceAll('-', '');
+      const from = fmt(new Date(today.getTime() - days * 86_400_000));
+      const to = fmt(today);
+      const series = {};
+      if (source === 'mock') {
+        for (const c of codes) series[c] = mockSeries(c, days);
+        return sendJson(res, 200, { source, series });
+      }
+      const fetchOne = async (code) => {
+        const key = `${code}:${days}:${to}`;
+        if (historyCache.has(key)) { series[code] = historyCache.get(key); return; }
+        // 야후는 순간 요청 폭주 시 산발적으로 4xx를 반환하므로 재시도
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            const candles =
+              source === 'kis' && !/[^0-9]/.test(code)
+                ? await kisDailyCandles(code, from, to)
+                : await yahooDailyCandles(code, from, to);
+            const s = candles.map((x) => ({ date: x.date, close: x.close }));
+            historyCache.set(key, s);
+            series[code] = s;
+            return;
+          } catch (e) {
+            if (attempt === 3) console.warn(`[stoccer] history 실패 ${code}:`, String(e.message).slice(0, 100));
+            else await sleep(700 * attempt);
+          }
+        }
+      };
+      if (source === 'kis') {
+        for (const c of codes) { await fetchOne(c); await sleep(THROTTLE_MS); }
+      } else {
+        const CHUNK = 5;
+        for (let i = 0; i < codes.length; i += CHUNK) {
+          await Promise.all(codes.slice(i, i + CHUNK).map(fetchOne));
+          if (i + CHUNK < codes.length) await sleep(300);
+        }
+      }
+      return sendJson(res, 200, { source, series });
+    }
+
     if (url.pathname === '/api/weather') {
       // 환율(KRW=X)·유가(WTI, CL=F)는 야후에서 실시간 조회, 금리는 대표값
       // TODO: 한국은행 ECOS(기준금리) 연동
@@ -324,4 +397,5 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, () => {
   console.log(`[stoccer] 서버 시작: http://localhost:${PORT}`);
   console.log(`[stoccer] 데이터 소스: ${kisConfigured ? `KIS (${KIS_ENV === 'real' ? '실전' : '모의투자'})` : '샘플(mock) — KIS_APP_KEY/KIS_APP_SECRET 설정 시 실데이터로 전환'}`);
+  detectSource().catch(() => {}); // 첫 요청이 기다리지 않도록 미리 탐지
 });

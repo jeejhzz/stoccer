@@ -168,6 +168,7 @@ export default function App() {
       {tab === 'league' && (
         <main className="single-col">
           <LeagueTab
+            provider={dataProvider}
             formation={formation}
             lineup={lineup}
             cashPercent={cashPercent}

@@ -66,11 +66,24 @@ export interface Weather {
 
 export interface WeeklyResult {
   week: number;
+  label: string; // 예: '~7/11' (주 마지막 거래일)
   weeklyReturn: number; // %
   goalsFor: number;
   goalsAgainst: number;
   result: 'W' | 'D' | 'L';
   points: number;
+}
+
+/** 일별 종가 (실데이터 리그 계산용) */
+export interface PricePoint {
+  date: string; // YYYY-MM-DD
+  close: number;
+}
+
+/** 날짜가 붙은 일간 수익률 */
+export interface DatedReturn {
+  date: string;
+  ret: number; // %
 }
 
 export interface SeasonRow {
